@@ -29,7 +29,7 @@ class DynamicResourceGraph:
                     distance = np.random.randint(1, 10)  # Random distance between 1 and 10 units
                     travel_time = distance * self.distance_constant
                     self.graph.add_edge(i, j, max_capacity=self.node_edge, current_capacity=self.node_edge,
-                                        distance=distance, travel_time=travel_time, flow=0)
+                                        distance=distance, travel_time=travel_time, flow=0, cars=[])
 
     def update_resource_level(self, node, people_amount, cars_amount):
         """Update the people and cars level at a specific node."""
@@ -45,7 +45,7 @@ class DynamicResourceGraph:
             self.graph.edges[u, v]['current_capacity'] = resource_availability
 
     def move_resources(self, path, people_amount, cars_amount):
-        """Move resources along a given path, updating flows and capacities."""
+        """Move resources along a given path, updating flows, capacities, and car positions."""
         for i in range(len(path) - 1):
             u = path[i]
             v = path[i + 1]
@@ -53,14 +53,37 @@ class DynamicResourceGraph:
             self.graph.edges[u, v]['current_capacity'] -= people_amount
             if self.graph.edges[u, v]['current_capacity'] < 0:
                 raise ValueError("Capacity exceeded on edge ({}, {})".format(u, v))
+            
             self.update_resource_level(u, -people_amount, -cars_amount)
             self.update_resource_level(v, people_amount, cars_amount)
+            
+            # Update car positions on the edge
+            for car in range(cars_amount):
+                self.graph.edges[u, v]['cars'].append({'car_id': len(self.graph.edges[u, v]['cars']) + 1, 'position': 0})
+
+    def update_car_positions(self, time_elapsed):
+        """Update the position of cars on each edge based on the time elapsed."""
+        for u, v in self.graph.edges():
+            for car in self.graph.edges[u, v]['cars']:
+                travel_time = self.graph.edges[u, v]['travel_time']
+                distance = self.graph.edges[u, v]['distance']
+                car['position'] += (distance / travel_time) * time_elapsed
+                if car['position'] >= distance:
+                    car['position'] = distance  # Car has reached the end of the edge
 
     def reset_flows(self):
         """Reset the flow on all edges to zero (for simulation purposes)."""
         for u, v in self.graph.edges():
             self.graph.edges[u, v]['flow'] = 0
             self.graph.edges[u, v]['current_capacity'] = self.graph.edges[u, v]['max_capacity']
+            self.graph.edges[u, v]['cars'] = []
+
+    def get_car_positions(self):
+        """Retrieve the positions of all cars on all edges."""
+        car_positions = {}
+        for u, v in self.graph.edges():
+            car_positions[(u, v)] = [(car['car_id'], car['position']) for car in self.graph.edges[u, v]['cars']]
+        return car_positions
 
 # Example usage
 if __name__ == "__main__":
@@ -79,6 +102,9 @@ if __name__ == "__main__":
     cars_to_move = 2
     graph.move_resources(path, people_to_move, cars_to_move)
 
+    # Update car positions after some time has elapsed
+    graph.update_car_positions(time_elapsed=1.0)  # Example time elapsed
+
     # Adjust capacities based on current state
     graph.adjust_edge_capacities()
 
@@ -90,3 +116,9 @@ if __name__ == "__main__":
     print("Edge attributes:")
     for edge in graph.graph.edges(data=True):
         print(edge)
+
+    print("Car positions on edges:")
+    car_positions = graph.get_car_positions()
+    for edge, positions in car_positions.items():
+        print(f"Edge {edge}: {positions}")
+
